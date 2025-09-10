@@ -272,7 +272,7 @@ const Top5ResultsDisplay: React.FC<{ results: Top5OptimizationResult[] }> = ({ r
         size="small"
         style={{ background: 'transparent' }}
       >
-        {results.map((item, index) => {
+        {results.map((item) => {
           const { rank, result } = item;
           const { products, mixedProperties, totalCost, summary } = result;
           const allConstraintsSatisfied = Object.values(summary.constraintsSatisfied).every(Boolean);
@@ -303,7 +303,7 @@ const Top5ResultsDisplay: React.FC<{ results: Top5OptimizationResult[] }> = ({ r
                     <span style={{ fontSize: '12px', color: '#666' }}>
                       {summary.productCount} 种产品
                     </span>
-                    <Tag color={allConstraintsSatisfied ? 'success' : 'warning'} size="small">
+                    <Tag color={allConstraintsSatisfied ? 'success' : 'warning'}>
                       {allConstraintsSatisfied ? '✓ 满足约束' : '⚠ 部分约束'}
                     </Tag>
                   </div>
@@ -496,13 +496,12 @@ const SingleResultContent: React.FC<{
           message="⚠️ 部分约束条件未满足"
           type="warning"
           showIcon
-          size="small"
           style={{ marginBottom: 16 }}
           description={
             <div>
               约束检查：
               {Object.entries(summary.constraintsSatisfied).map(([key, satisfied]) => (
-                <Tag key={key} color={satisfied ? 'success' : 'error'} style={{ margin: '0 4px 4px 0' }} size="small">
+                <Tag key={key} color={satisfied ? 'success' : 'error'} style={{ margin: '0 4px 4px 0' }}>
                   {key}: {satisfied ? '✓' : '✗'}
                 </Tag>
               ))}
