@@ -39,3 +39,17 @@ export interface OptimizationResult {
     };
   };
 }
+
+// TOP5优化结果类型
+export interface Top5OptimizationResult {
+  rank: number;
+  result: OptimizationResult;
+}
+
+// TOP5响应类型
+export interface Top5Response {
+  success: boolean;
+  count: number;
+  results: Top5OptimizationResult[];
+  constraints: Constraints;
+}
