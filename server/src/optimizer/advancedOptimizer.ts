@@ -187,7 +187,7 @@ export class AdvancedOptimizer {
             
             validResults.push({
               ...result,
-              sortKey: result.totalCost
+              sortKey: Number(result.totalCost.toFixed(2)) // 固定精度避免浮点误差
             });
           } else {
             if (result.feasible) {
@@ -203,8 +203,15 @@ export class AdvancedOptimizer {
 
       console.log(`找到 ${validResults.length} 个有效方案`);
 
-      // 第三步：按价格排序，取前5个
-      validResults.sort((a, b) => a.sortKey - b.sortKey);
+      // 第三步：按价格排序，取前5个，添加二级排序保证稳定性
+      validResults.sort((a, b) => {
+        const costDiff = a.sortKey - b.sortKey;
+        if (Math.abs(costDiff) < 1e-10) {
+          // 成本相同时按产品数量排序
+          return a.products.length - b.products.length;
+        }
+        return costDiff;
+      });
       
       // 过滤重复方案（成本相差很小的认为是重复）
       const uniqueResults = this.filterSimilarResults(validResults);
@@ -242,8 +249,9 @@ export class AdvancedOptimizer {
       const targetCombinations = Math.min(15, n * 2);
       
       for (let i = 0; i < targetCombinations; i++) {
-        const combSize = Math.min(n, Math.max(3, Math.floor(Math.random() * 4) + 3));
-        const combination = this.getRandomCombination(products, combSize);
+        // 使用确定性方式生成组合大小
+        const combSize = Math.min(n, Math.max(3, (i % 4) + 3));
+        const combination = this.getRandomCombination(products, combSize, i);
         
         // 避免重复
         if (!this.isDuplicateCombination(combination, combinations)) {
@@ -295,10 +303,32 @@ export class AdvancedOptimizer {
     return this.directSearchOptimizer.optimize(products, constraints);
   }
 
-  // 获取随机产品组合
-  private getRandomCombination(products: Product[], size: number): Product[] {
-    const shuffled = [...products].sort(() => 0.5 - Math.random());
+  // 获取确定性产品组合（使用产品ID作为随机种子）
+  private getRandomCombination(products: Product[], size: number, index: number = 0): Product[] {
+    // 使用产品ID和索引的哈希值作为种子，确保相同输入产生相同输出
+    const seed = this.generateSeedFromProducts(products) + '_' + index;
+    const shuffled = [...products].sort((a, b) => {
+      const hashA = this.simpleHash(a.id + seed);
+      const hashB = this.simpleHash(b.id + seed);
+      return hashA - hashB;
+    });
     return shuffled.slice(0, size);
+  }
+
+  // 简单哈希函数，用于生成确定性随机数
+  private simpleHash(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 转换为32位整数
+    }
+    return Math.abs(hash);
+  }
+
+  // 从产品列表生成种子
+  private generateSeedFromProducts(products: Product[]): string {
+    return products.map(p => p.id).sort().join('_');
   }
 
   // 检查是否为重复组合
@@ -348,7 +378,10 @@ export class AdvancedOptimizer {
     
     for (const result of results) {
       const isSimilar = filtered.some(existing => {
-        const diff = Math.abs(result.sortKey - existing.sortKey) / existing.sortKey;
+        // 使用固定精度的成本进行比较
+        const resultCost = Number(result.sortKey.toFixed(2));
+        const existingCost = Number(existing.sortKey.toFixed(2));
+        const diff = Math.abs(resultCost - existingCost) / existingCost;
         return diff < threshold;
       });
       
