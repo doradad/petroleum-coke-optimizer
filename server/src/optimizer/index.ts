@@ -34,6 +34,16 @@ export class PetroleumCokeOptimizer {
     }
   }
 
+  // 生成TOP5优化方案
+  optimizeTop5(products: Product[], constraints: Constraints): OptimizationResult[] {
+    try {
+      return this.advancedOptimizer.optimizeTop5(products, constraints);
+    } catch (error) {
+      console.error('TOP5优化求解失败:', error);
+      return [];
+    }
+  }
+
   // 暴露约束验证功能
   validateConstraints(products: Product[], constraints: Constraints) {
     return this.advancedOptimizer.validateConstraints(products, constraints);
