@@ -156,4 +156,207 @@ export class AdvancedOptimizer {
   } {
     return this.linearProgrammingOptimizer.validateConstraints(products, constraints);
   }
+
+  // 生成TOP5优化方案
+  optimizeTop5(products: Product[], constraints: Constraints): OptimizationResult[] {
+    if (products.length === 0) {
+      return [];
+    }
+
+    console.log(`开始生成TOP5方案: ${products.length} 个产品`);
+    console.log('约束条件:', constraints);
+    
+    try {
+      // 第一步：生成多种产品组合方案
+      const combinations = this.generateProductCombinations(products);
+      console.log(`生成了 ${combinations.length} 种产品组合`);
+
+      // 第二步：为每种组合优化掺配比例
+      const validResults: Array<OptimizationResult & { sortKey: number }> = [];
+
+      for (let i = 0; i < combinations.length && validResults.length < 50; i++) {
+        const combination = combinations[i];
+        try {
+          // 使用子集产品进行优化
+          const result = this.optimizeCombination(combination, constraints);
+          
+          // 严格验证约束条件
+          if (result.feasible && result.totalCost > 0 && this.validateSolutionConstraints(result, constraints)) {
+            console.log(`找到可行方案: 成本=${result.totalCost}, 产品数=${result.products.length}`);
+            console.log(`  约束验证: S=${result.mixedProperties.sulfur}≤${constraints.sulfur}, A=${result.mixedProperties.ash}≤${constraints.ash}, V=${result.mixedProperties.volatile}≤${constraints.volatile}, 钒=${result.mixedProperties.vanadium}≤${constraints.vanadium}`);
+            
+            validResults.push({
+              ...result,
+              sortKey: result.totalCost
+            });
+          } else {
+            if (result.feasible) {
+              console.log(`跳过违反约束的方案: 成本=${result.totalCost}`);
+              console.log(`  约束检查: S=${result.mixedProperties.sulfur}≤${constraints.sulfur}? A=${result.mixedProperties.ash}≤${constraints.ash}? V=${result.mixedProperties.volatile}≤${constraints.volatile}? 钒=${result.mixedProperties.vanadium}≤${constraints.vanadium}?`);
+            }
+          }
+        } catch (error) {
+          // 跳过失败的组合
+          continue;
+        }
+      }
+
+      console.log(`找到 ${validResults.length} 个有效方案`);
+
+      // 第三步：按价格排序，取前5个
+      validResults.sort((a, b) => a.sortKey - b.sortKey);
+      
+      // 过滤重复方案（成本相差很小的认为是重复）
+      const uniqueResults = this.filterSimilarResults(validResults);
+      
+      console.log(`去重后有 ${uniqueResults.length} 个方案`);
+      
+      const top5Results = uniqueResults.slice(0, 5).map(r => {
+        const { sortKey, ...result } = r;
+        return result;
+      });
+
+      console.log(`返回TOP5方案，成本分别为: ${top5Results.map(r => r.totalCost.toFixed(2)).join(', ')}`);
+      
+      return top5Results;
+
+    } catch (error) {
+      console.error('生成TOP5方案失败:', error);
+      // 回退到单一最优解
+      const singleResult = this.optimize(products, constraints);
+      return singleResult.feasible ? [singleResult] : [];
+    }
+  }
+
+  // 生成不同的产品组合
+  private generateProductCombinations(products: Product[]): Product[][] {
+    const combinations: Product[][] = [];
+    const n = products.length;
+    
+    // 添加全部产品组合
+    combinations.push([...products]);
+    
+    // 如果产品数量较多，生成一些子集组合
+    if (n > 3) {
+      // 随机生成一些3-5个产品的组合
+      const targetCombinations = Math.min(15, n * 2);
+      
+      for (let i = 0; i < targetCombinations; i++) {
+        const combSize = Math.min(n, Math.max(3, Math.floor(Math.random() * 4) + 3));
+        const combination = this.getRandomCombination(products, combSize);
+        
+        // 避免重复
+        if (!this.isDuplicateCombination(combination, combinations)) {
+          combinations.push(combination);
+        }
+      }
+      
+      // 添加一些基于价格的组合
+      const sortedByPrice = [...products].sort((a, b) => a.price - b.price);
+      
+      // 最便宜的N个
+      for (let size = 3; size <= Math.min(6, n); size++) {
+        combinations.push(sortedByPrice.slice(0, size));
+      }
+      
+      // 中等价格的N个
+      if (n >= 6) {
+        const midStart = Math.floor((n - 4) / 2);
+        combinations.push(sortedByPrice.slice(midStart, midStart + 4));
+      }
+    }
+    
+    return combinations;
+  }
+
+  // 优化特定产品组合
+  private optimizeCombination(products: Product[], constraints: Constraints): OptimizationResult {
+    // 首先尝试简化LP求解器
+    try {
+      const result = this.simpleLPSolver.optimize(products, constraints);
+      if (result.feasible) {
+        return result;
+      }
+    } catch (error) {
+      // 继续尝试其他方法
+    }
+
+    // 尝试线性规划
+    try {
+      const result = this.linearProgrammingOptimizer.optimize(products, constraints);
+      if (result.feasible) {
+        return result;
+      }
+    } catch (error) {
+      // 继续尝试其他方法
+    }
+
+    // 最后回退到直接搜索
+    return this.directSearchOptimizer.optimize(products, constraints);
+  }
+
+  // 获取随机产品组合
+  private getRandomCombination(products: Product[], size: number): Product[] {
+    const shuffled = [...products].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, size);
+  }
+
+  // 检查是否为重复组合
+  private isDuplicateCombination(combination: Product[], existing: Product[][]): boolean {
+    const ids = combination.map(p => p.id).sort();
+    
+    return existing.some(existingComb => {
+      const existingIds = existingComb.map(p => p.id).sort();
+      return ids.length === existingIds.length && 
+             ids.every((id, index) => id === existingIds[index]);
+    });
+  }
+
+  // 严格验证解是否满足所有约束条件
+  private validateSolutionConstraints(result: OptimizationResult, constraints: Constraints): boolean {
+    const props = result.mixedProperties;
+    
+    // 检查每个约束条件
+    const sulfurValid = props.sulfur <= constraints.sulfur + 1e-6; // 添加小的容差
+    const ashValid = props.ash <= constraints.ash + 1e-6;
+    const volatileValid = props.volatile <= constraints.volatile + 1e-6;
+    const vanadiumValid = props.vanadium <= constraints.vanadium + 1e-6;
+    
+    // 检查总比例是否接近1
+    const totalRatio = result.products.reduce((sum, p) => sum + p.ratio, 0);
+    const ratioValid = Math.abs(totalRatio - 1.0) < 1e-6;
+    
+    const isValid = sulfurValid && ashValid && volatileValid && vanadiumValid && ratioValid;
+    
+    if (!isValid) {
+      console.log(`约束验证失败:`, {
+        sulfur: `${props.sulfur} > ${constraints.sulfur}? ${!sulfurValid}`,
+        ash: `${props.ash} > ${constraints.ash}? ${!ashValid}`,
+        volatile: `${props.volatile} > ${constraints.volatile}? ${!volatileValid}`,
+        vanadium: `${props.vanadium} > ${constraints.vanadium}? ${!vanadiumValid}`,
+        totalRatio: `${totalRatio} != 1.0? ${!ratioValid}`
+      });
+    }
+    
+    return isValid;
+  }
+
+  // 过滤相似的结果（成本差异小于1%的认为相似）
+  private filterSimilarResults(results: Array<OptimizationResult & { sortKey: number }>): Array<OptimizationResult & { sortKey: number }> {
+    const filtered: Array<OptimizationResult & { sortKey: number }> = [];
+    const threshold = 0.01; // 1%差异阈值
+    
+    for (const result of results) {
+      const isSimilar = filtered.some(existing => {
+        const diff = Math.abs(result.sortKey - existing.sortKey) / existing.sortKey;
+        return diff < threshold;
+      });
+      
+      if (!isSimilar) {
+        filtered.push(result);
+      }
+    }
+    
+    return filtered;
+  }
 }
