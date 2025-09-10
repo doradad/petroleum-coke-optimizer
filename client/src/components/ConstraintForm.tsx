@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { Form, InputNumber, Button, Row, Col, Divider, Alert, Progress } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
+import { Form, InputNumber, Button, Row, Col, Divider, Alert, Progress, Space } from 'antd';
+import { ThunderboltOutlined, TrophyOutlined } from '@ant-design/icons';
 import { Constraints } from '../types';
 
 interface ConstraintFormProps {
   onOptimize: (constraints: Constraints) => void;
+  onTop5Optimize?: (constraints: Constraints) => void;
   loading: boolean;
   progress?: number;
   progressText?: string;
   elapsedTime?: number;
 }
 
-const ConstraintForm: React.FC<ConstraintFormProps> = ({ onOptimize, loading, progress = 0, progressText = '', elapsedTime = 0 }) => {
+const ConstraintForm: React.FC<ConstraintFormProps> = ({ onOptimize, onTop5Optimize, loading, progress = 0, progressText = '', elapsedTime = 0 }) => {
   const [form] = Form.useForm();
   const [constraints, setConstraints] = useState<Constraints>({
     sulfur: 3.0,
@@ -30,6 +31,21 @@ const ConstraintForm: React.FC<ConstraintFormProps> = ({ onOptimize, loading, pr
       };
       setConstraints(newConstraints);
       onOptimize(newConstraints);
+    });
+  };
+
+  const handleTop5Submit = () => {
+    if (!onTop5Optimize) return;
+    
+    form.validateFields().then(values => {
+      const newConstraints: Constraints = {
+        sulfur: values.sulfur,
+        ash: values.ash,
+        volatile: values.volatile,
+        vanadium: values.vanadium
+      };
+      setConstraints(newConstraints);
+      onTop5Optimize(newConstraints);
     });
   };
 
@@ -125,17 +141,38 @@ const ConstraintForm: React.FC<ConstraintFormProps> = ({ onOptimize, loading, pr
 
         <Divider />
 
-        <Button
-          type="primary"
-          htmlType="submit"
-          loading={loading}
-          icon={<ThunderboltOutlined />}
-          size="large"
-          className="optimization-button"
-          style={{ width: '100%' }}
-        >
-          {loading ? '正在计算最优方案...' : '开始优化计算'}
-        </Button>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            icon={<ThunderboltOutlined />}
+            size="large"
+            className="optimization-button"
+            style={{ width: '100%' }}
+          >
+            {loading ? '正在计算最优方案...' : '最优方案计算'}
+          </Button>
+          
+          {onTop5Optimize && (
+            <Button
+              type="default"
+              loading={loading}
+              icon={<TrophyOutlined />}
+              size="large"
+              className="top5-button"
+              style={{ 
+                width: '100%',
+                borderColor: '#fa8c16',
+                color: '#fa8c16',
+                background: 'linear-gradient(135deg, #fff7e6 0%, #fffbf0 100%)'
+              }}
+              onClick={handleTop5Submit}
+            >
+              {loading ? '正在生成TOP5方案...' : 'TOP5 方案对比'}
+            </Button>
+          )}
+        </Space>
         
         {loading && (
           <div style={{ marginTop: 16 }}>
