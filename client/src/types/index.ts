@@ -52,4 +52,5 @@ export interface Top5Response {
   count: number;
   results: Top5OptimizationResult[];
   constraints: Constraints;
+  error?: string;
 }
