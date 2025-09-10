@@ -10,13 +10,15 @@ import UploadSection from './components/UploadSection';
 import ConstraintForm from './components/ConstraintForm';
 import ResultDisplay from './components/ResultDisplay';
 import ProductTable from './components/ProductTable';
-import { Product, Constraints, OptimizationResult } from './types';
+import { Product, Constraints, OptimizationResult, Top5Response, Top5OptimizationResult } from './types';
 
 const { Header, Content } = Layout;
 
 function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [result, setResult] = useState<OptimizationResult | null>(null);
+  const [top5Results, setTop5Results] = useState<Top5OptimizationResult[]>([]);
+  const [showTop5, setShowTop5] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
@@ -25,6 +27,8 @@ function App() {
   const handleProductsUploaded = useCallback((uploadedProducts: Product[]) => {
     setProducts(uploadedProducts);
     setResult(null); // 清除之前的结果
+    setTop5Results([]); // 清除TOP5结果
+    setShowTop5(false);
     message.success(`成功导入 ${uploadedProducts.length} 个产品`);
   }, []);
 
@@ -104,6 +108,79 @@ function App() {
     }
   }, [products]);
 
+  const handleTop5Optimize = useCallback(async (constraints: Constraints) => {
+    if (products.length === 0) {
+      message.error('请先上传产品清单');
+      return;
+    }
+
+    setLoading(true);
+    setProgress(0);
+    setProgressText('生成多种产品组合...');
+    setElapsedTime(0);
+    const startTime = Date.now();
+    
+    // 计时器更新
+    const timeInterval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    
+    // 进度更新（TOP5计算进度）
+    const progressInterval = setInterval(() => {
+      setProgress(prev => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        const newProgress = Math.min(prev + Math.random() * 15, 90);
+        
+        if (elapsed < 3) {
+          setProgressText('生成产品组合...');
+        } else if (elapsed < 8) {
+          setProgressText('优化各种组合方案...');
+        } else if (elapsed < 15) {
+          setProgressText('筛选最优TOP5方案...');
+        } else {
+          setProgressText('完成TOP5计算...');
+        }
+        return newProgress;
+      });
+    }, 600);
+
+    try {
+      const response = await fetch('/api/optimize-top5', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ constraints }),
+      });
+
+      const data: Top5Response = await response.json();
+      
+      clearInterval(progressInterval);
+      clearInterval(timeInterval);
+      setProgress(100);
+      setProgressText('TOP5计算完成！');
+
+      if (data.success) {
+        setTop5Results(data.results);
+        setShowTop5(true);
+        setResult(null); // 清除单一结果
+        message.success(`生成了 ${data.results.length} 个优化方案！`);
+      } else {
+        message.error(data.error || 'TOP5优化计算失败');
+      }
+    } catch (error) {
+      clearInterval(progressInterval);
+      clearInterval(timeInterval);
+      console.error('TOP5优化请求失败:', error);
+      message.error('服务器连接失败，请检查网络');
+    } finally {
+      setLoading(false);
+      setProgress(0);
+      setProgressText('');
+      setElapsedTime(0);
+    }
+  }, [products]);
+
   return (
     <Layout className="main-container">
       <Header className="header">
@@ -145,6 +222,7 @@ function App() {
             >
               <ConstraintForm 
                 onOptimize={handleOptimize} 
+                onTop5Optimize={handleTop5Optimize}
                 loading={loading}
                 progress={progress}
                 progressText={progressText}
@@ -172,19 +250,23 @@ function App() {
           )}
 
           {/* 优化结果 */}
-          {result && (
+          {(result || showTop5) && (
             <Col xs={24}>
               <Card 
                 title={
                   <span>
                     <BarChartOutlined style={{ marginRight: 8, color: '#fa8c16' }} />
-                    优化结果
+                    {showTop5 ? 'TOP5 优化方案' : '优化结果'}
                   </span>
                 }
                 className="content-card"
                 size="small"
               >
-                <ResultDisplay result={result} />
+                <ResultDisplay 
+                  result={result} 
+                  top5Results={top5Results}
+                  showTop5={showTop5}
+                />
               </Card>
             </Col>
           )}
